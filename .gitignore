@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Datos (no subir imágenes al repo por tamaño)
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+# Modelos entrenados (pueden ser grandes)
+models/*.pkl
+models/*.h5
+models/*.pt
+!models/.gitkeep
+
+# Outputs intermedios
+outputs/figures/*.svg
+!outputs/figures/.gitkeep
+
+# macOS
+.DS_Store
+
+# IDEs
+.vscode/
+.idea/
