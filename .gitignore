@@ -1,34 +1,113 @@
+# ============================================================
 # Python
+# ============================================================
 __pycache__/
 *.py[cod]
 *.pyo
+*.pyd
+.Python
 .venv/
 venv/
 env/
+ENV/
 *.egg-info/
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.tox/
+build/
+dist/
 
+# ============================================================
 # Jupyter
+# ============================================================
 .ipynb_checkpoints/
 
-# Datos (no subir imágenes al repo por tamaño)
+# ============================================================
+# Datasets - NUNCA subir imagenes al repo (tamanio)
+# ============================================================
+
+# Recoleccion compartida del curso (~9515 imgs, 3.3 GB)
+Fruits/
+Fruits.zip
+
+# Cualquier zip pesado en la raiz
+*.zip
+*.tar
+*.tar.gz
+*.7z
+*.rar
+
+# Datos crudos y procesados (incluye descarga Kaggle via kagglehub)
 data/raw/*
 data/processed/*
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 
-# Modelos entrenados (pueden ser grandes)
+# El manifest CSV SI se versiona (es texto, reproducible, ~MB):
+# data/annotations/manifest.csv  <- NO ignorado, se sube
+data/annotations/*
+!data/annotations/.gitkeep
+!data/annotations/manifest.csv
+!data/annotations/*.md
+
+# ============================================================
+# Modelos entrenados y experimentos
+# ============================================================
+experiments/checkpoints/*
+!experiments/checkpoints/.gitkeep
+
+experiments/logs/*
+!experiments/logs/.gitkeep
+
+experiments/results/*.pkl
+experiments/results/*.h5
+experiments/results/*.pt
+experiments/results/*.npy
+
+# Compatibilidad con scaffold viejo (por si alguien crea models/)
 models/*.pkl
 models/*.h5
 models/*.pt
 !models/.gitkeep
 
-# Outputs intermedios
-outputs/figures/*.svg
-!outputs/figures/.gitkeep
+# ============================================================
+# Outputs
+# ============================================================
+# Figuras vectoriales SI se versionan (requeridas para informe IEEE)
+# outputs/figures/*.svg  <- NO ignorado, se sube
+outputs/*.tmp
+outputs/cache/
 
-# macOS
+# ============================================================
+# Credenciales y secretos
+# ============================================================
+.env
+.env.local
+*.pem
+*.key
+kaggle.json
+.kaggle/
+
+# ============================================================
+# Cache de descarga (kagglehub guarda fuera del repo, pero por si acaso)
+# ============================================================
+.cache/
+*.lock
+
+# ============================================================
+# Sistema operativo
+# ============================================================
 .DS_Store
+Thumbs.db
+desktop.ini
 
+# ============================================================
 # IDEs
+# ============================================================
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
