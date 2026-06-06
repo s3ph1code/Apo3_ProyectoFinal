@@ -2,25 +2,27 @@
 
 ## Alcance
 
-Clasificación de **calidad (alta / media / baja) cruzada con especie** para seis frutas: manzana, banano, guayaba, lima, naranja, granada. El espacio de salida tiene 18 etiquetas combinadas `Fruta_Calidad`.
+Clasificación de **calidad (Good / Regular / Bad, 3 clases universales)** sobre seis frutas (manzana, banano, guayaba, lima, naranja, granada). El modelo es **agnóstico a la especie**: una sola etiqueta de tres niveles describe el estado de calidad sin distinguir qué fruta es. La especie se mantiene como metadata para análisis de sesgo y para estratificación de los splits.
 
 ## Pipeline general (CRISP-DM)
 
 ```
-[Fruits/   (recolección del curso, 9515 imgs)]
-[data/raw/kaggle/   (descarga reproducible con kagglehub)]
+[Fruits/   recolección del curso, 9515 imgs]
+[data/raw/kaggle/   descarga opcional con kagglehub]
                   │
                   ▼
    [src/data/build_manifest.py]
    → data/annotations/manifest.csv
-     (path, fruit, quality, class_id, source, w, h)
+     columnas: path, fruit, quality, class, source, width, height
+     ─ quality = TARGET (3 clases)
+     ─ class   = Fruit_Quality (18) usado solo para estratificación
                   │
                   ▼
    [src/data/preprocess.py]
      - Resize 224×224
      - Normalización [0, 1]
-     - Split estratificado 70/15/15
-     - Data augmentation (train only)
+     - Split estratificado por `class` (18) → 70/15/15
+     - Data augmentation (solo en train)
                   │
         ┌─────────┴──────────────────┐
         ▼                            ▼
@@ -33,19 +35,18 @@ Clasificación de **calidad (alta / media / baja) cruzada con especie** para sei
         │                            │
         ▼                            ▼
 [src/models/ml_models.py]   [src/models/cnn_model.py]
-  - SVM kernel RBF            - 3 bloques Conv2D+BN+Pool
+  - SVM kernel RBF            - 3 bloques Conv2D + BN + Pool
   - Random Forest             - Dense(256) + Dropout(0.5)
-  - GridSearchCV 5-fold       - Softmax(18 clases)
+  - GridSearchCV 5-fold       - Softmax(3 clases)
         │                            │
         └────────────┬───────────────┘
                      ▼
          [src/evaluation/evaluate.py]
-           - Classification report (18 clases)
-           - Matriz de confusión 18×18 (SVG)
-           - Marginalización a 3 clases de calidad
-           - Marginalización a 6 clases de fruta
+           - Classification report (3 clases)
+           - Matriz de confusión 3×3 (target)
+           - Matriz 6×6 marginal por fruta (análisis de sesgo)
+           - Análisis condicional: ¿el modelo es uniformemente bueno entre frutas?
            - Curvas de aprendizaje (SVG)
-           - Comparativa F1-macro (SVG)
                      │
                      ▼
               [app/app.py]
@@ -63,12 +64,12 @@ min_{w,b}  ½‖w‖² + C Σᵢ ξᵢ
 sujeto a:  yᵢ(w·φ(xᵢ) + b) ≥ 1 − ξᵢ,    ξᵢ ≥ 0
 ```
 
-Kernel gaussiano: `k(x, x') = exp(−γ ‖x − x'‖²)`
+Kernel gaussiano: `k(x, x') = exp(−γ ‖x − x'‖²)`.
 
-Para 18 clases se aplica estrategia *one-vs-rest*: se entrenan 18 clasificadores binarios y se asigna la clase con mayor score:
+Para 3 clases se aplica estrategia *one-vs-rest*: tres clasificadores binarios; la clase predicha es la del mayor score:
 
 ```
-ŷ = argmax_{k ∈ {1,...,18}}  fₖ(x)
+ŷ = argmax_{k ∈ {Good, Regular, Bad}}  fₖ(x)
 ```
 
 ### Random Forest
@@ -76,72 +77,95 @@ Para 18 clases se aplica estrategia *one-vs-rest*: se entrenan 18 clasificadores
 Ensemble de T árboles de decisión entrenados con bagging y selección aleatoria de características por nodo:
 
 ```
-ŷ = argmax_{k ∈ {1,...,18}}  Σ_{t=1}^{T} 𝟙[hₜ(x) = k]
+ŷ = argmax_{k ∈ {Good, Regular, Bad}}  Σ_{t=1}^{T} 𝟙[hₜ(x) = k]
 ```
 
-La impureza de Gini por nodo se calcula sobre las 18 clases:
+Impureza de Gini sobre 3 clases:
 
 ```
-Gini(S) = 1 − Σ_{k=1}^{18} pₖ²
+Gini(S) = 1 − Σ_{k=1}^{3} pₖ²
 ```
 
 ### CNN (3 bloques convolucionales)
 
 ```
 Input (224×224×3)
-→ Conv2D(32, 3×3) + BN + ReLU + MaxPool(2×2)  →  112×112×32
-→ Conv2D(64, 3×3) + BN + ReLU + MaxPool(2×2)  →   56×56×64
-→ Conv2D(128, 3×3) + BN + ReLU + MaxPool(2×2) →   28×28×128
+→ Conv2D(32, 3×3) + BN + ReLU + MaxPool(2×2)   →  112×112×32
+→ Conv2D(64, 3×3) + BN + ReLU + MaxPool(2×2)   →   56×56×64
+→ Conv2D(128, 3×3) + BN + ReLU + MaxPool(2×2)  →   28×28×128
 → Flatten → Dense(256) + ReLU → Dropout(0.5)
-→ Dense(18) + Softmax
+→ Dense(3) + Softmax
 ```
 
 Pérdida: entropía cruzada categórica
 
 ```
-ℒ = − (1/N) Σᵢ Σ_{k=1}^{18} yᵢₖ log(ŷᵢₖ)
+ℒ = − (1/N) Σᵢ Σ_{k=1}^{3} yᵢₖ log(ŷᵢₖ)
 ```
 
-Si el desbalanceo lo justifica (decisión tras EDA), se aplica `class_weight` inverso a la frecuencia:
+El desbalanceo es leve (Imbalance Ratio = 2.06), pero por consistencia aplicamos `class_weight` inverso a la frecuencia:
 
 ```
-wₖ = N / (K · nₖ)        K = 18, nₖ = #ejemplos clase k
+wₖ = N / (3 · nₖ)      donde nₖ es el número de ejemplos de la clase k
 ```
 
-## Mapeo de etiquetas
+## Etiquetas y mapeo
 
-Identificadores en código = nombres del filesystem (single source of truth):
+Identificadores en código (filesystem-aligned):
 
-```
-CLASS_NAMES = sorted([
-    "Apple_Good",  "Apple_Regular",  "Apple_Bad",
-    "Banana_Good", "Banana_Regular", "Banana_Bad",
-    "Guava_Good",  "Guava_Regular",  "Guava_Bad",
-    "Lime_Good",   "Lime_Regular",   "Lime_Bad",
-    "Orange_Good", "Orange_Regular", "Orange_Bad",
-    "Pomegranate_Good", "Pomegranate_Regular", "Pomegranate_Bad",
-])
+```python
+CLASS_NAMES = ["Good", "Regular", "Bad"]   # target del modelo
+N_CLASSES   = 3
 ```
 
 Traducción a español (solo en UI / informe IEEE):
 
 | Inglés | Español |
 |---|---|
-| Good / Regular / Bad | alta / media / baja |
-| Apple / Banana / Guava / Lime / Orange / Pomegranate | manzana / banano / guayaba / lima / naranja / granada |
+| Good | calidad alta |
+| Regular | calidad media |
+| Bad | calidad baja |
 
-## Marginalización para análisis
+Para reportar resultados desagregados por especie:
 
-A partir del clasificador de 18 clases se puede derivar:
+| Inglés | Español |
+|---|---|
+| Apple | manzana |
+| Banana | banano |
+| Guava | guayaba |
+| Lime | lima |
+| Orange | naranja |
+| Pomegranate | granada |
 
-- **Calidad universal (3 clases):**  `P(calidad = c) = Σ_{f} P(fruta = f, calidad = c)`
-- **Especie (6 clases):**            `P(fruta  = f) = Σ_{c} P(fruta = f, calidad = c)`
+## Estratificación del split
 
-Esto permite reportar en el informe IEEE tres matrices de confusión complementarias (18×18, 3×3, 6×6).
+El target tiene 3 niveles, pero **la estratificación del split usa las 18 combinaciones `class = Fruit_Quality`** del manifest. Esto garantiza que train/val/test mantengan proporciones equilibradas por fruta y por calidad, evitando que el modelo entrene mayoritariamente con Pomegranate y se evalúe mayoritariamente con Lime.
 
-## Estimación de tamaño
+```python
+from sklearn.model_selection import train_test_split
 
-Heurística basada en el área de la región frutal segmentada (umbral en canal V de HSV + cierre morfológico). El umbral de tamaño se calibra **por especie** porque "grande" no es comparable entre granada y lima:
+df = pd.read_csv("data/annotations/manifest.csv")
+y = df["quality"]                       # target = 3 clases
+strat_key = df["class"]                 # estratificación = 18 combinaciones
+
+train, test = train_test_split(df, test_size=0.15, stratify=strat_key, random_state=42)
+train, val  = train_test_split(train, test_size=0.176, stratify=train["class"], random_state=42)
+# 0.176 ≈ 0.15 / 0.85 para obtener 70/15/15 sobre el total
+```
+
+## Análisis de sesgo por especie (informe IEEE)
+
+A partir del clasificador de 3 clases, se reporta:
+
+- **Matriz de confusión 3×3 (target):** mide la calidad del clasificador.
+- **Matriz de confusión 6×6 marginal por fruta:** cuenta cuántas imágenes de cada fruta caen en cada predicción. Idealmente la diagonal está cerca de la proporción real → el modelo no usa la especie como atajo.
+- **Accuracy condicional por fruta:** `Acc(f) = #aciertos en imágenes de fruta f / total de fruta f`. Una disparidad alta sugiere que el modelo tiene sesgo por especie.
+
+Esto responde la pregunta clave del informe: "¿el modelo aprende calidad real o pistas por especie?"
+
+## Estimación de tamaño (salida secundaria)
+
+Heurística basada en el área de la región frutal (segmentación por umbral en canal V de HSV + cierre morfológico). El umbral de tamaño se calibra **por especie**, porque "grande" no es comparable entre granada y lima:
 
 ```
 tamaño(f) = {
@@ -155,10 +179,10 @@ donde `q₃₃(f)` y `q₆₆(f)` son los percentiles 33 y 66 del área para la 
 
 ## Métricas reportadas
 
-- Accuracy global y por clase.
-- Precision, Recall, F1 (por clase y macro).
-- Matrices de confusión: 18×18, 3×3 (calidad), 6×6 (fruta).
-- Curvas de aprendizaje (loss y accuracy de train vs validation).
-- Comparación tabular SVM vs Random Forest vs CNN en F1-macro.
+- **Globales (target = 3 clases):** Accuracy, Precision, Recall, F1 (por clase y macro).
+- **Matriz 3×3 (target)** y **matriz 6×6 (especies, para sesgo).**
+- **Curvas de aprendizaje** (loss y accuracy de train vs validation).
+- **Comparativa tabular** SVM vs Random Forest vs CNN en F1-macro.
+- **Análisis condicional** del rendimiento por especie.
 
-Todas las figuras se guardan en formato **SVG** (requisito vectorial del informe IEEE) en `outputs/figures/`.
+Todas las figuras se guardan como **SVG** (requisito vectorial del informe IEEE) en `outputs/figures/`.

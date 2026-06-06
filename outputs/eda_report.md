@@ -1,45 +1,44 @@
 # Reporte EDA - Fase 1 CRISP-DM
 
 > Generado desde `notebooks/01_comprension_datos.ipynb`.
-> Proyecto: Clasificacion de calidad de frutas - APO3 ICESI 2026-1.
+> Proyecto: Clasificacion universal de calidad de frutas - APO3 ICESI 2026-1.
 
 ## 1. Resumen ejecutivo
 
+- **Target del modelo:** 3 clases universales de calidad (Good / Regular / Bad), agnosticas a la especie.
 - **Imagenes totales:** 9,515
-- **Clases:** 18 (6 frutas x 3 calidades)
 - **Fuentes:** {'recolectada': 9515}
+- **Frutas representadas (metadata):** ['Apple', 'Banana', 'Guava', 'Lime', 'Orange', 'Pomegranate']
 
-## 2. Distribucion de clases
+## 2. Distribucion del target (3 clases)
 
 | Clase | n | % |
 |---|---:|---:|
-| Apple_Bad | 153 | 1.61% |
-| Apple_Good | 267 | 2.81% |
-| Apple_Regular | 890 | 9.35% |
-| Banana_Bad | 684 | 7.19% |
-| Banana_Good | 201 | 2.11% |
-| Banana_Regular | 936 | 9.84% |
-| Guava_Bad | 135 | 1.42% |
-| Guava_Good | 200 | 2.10% |
-| Guava_Regular | 813 | 8.54% |
-| Lime_Bad | 152 | 1.60% |
-| Lime_Good | 200 | 2.10% |
-| Lime_Regular | 743 | 7.81% |
-| Orange_Bad | 111 | 1.17% |
-| Orange_Good | 206 | 2.17% |
-| Orange_Regular | 510 | 5.36% |
-| Pomegranate_Bad | 1009 | 10.60% |
-| Pomegranate_Good | 1585 | 16.66% |
-| Pomegranate_Regular | 720 | 7.57% |
+| Good | 2,659 | 27.95% |
+| Regular | 4,612 | 48.47% |
+| Bad | 2,244 | 23.58% |
 
-**Imbalance Ratio (IR = n_max / n_min):** 14.28  
-**Entropia normalizada (Hn = H / log K):** 0.903  
-**Coeficiente de variacion (CV = sigma / mu):** 0.79
+**Imbalance Ratio (IR = n_max / n_min):** 2.06  
+**Entropia normalizada (Hn):** 0.954  (1.0 = uniforme)
+**Coeficiente de variacion (CV):** 0.40
 
-Clase mayoritaria: **Pomegranate_Good** (1,585).  
-Clase minoritaria: **Orange_Bad** (111).
+El desbalanceo es leve. Clase mayoritaria: **Regular** (4,612). Clase minoritaria: **Bad** (2,244).
 
-## 3. Dimensiones de imagen
+## 3. Composicion por especie (analisis de sesgo)
+
+Aunque la especie no es target, su distribucion dentro de cada clase del target es critica para detectar sesgos:
+
+| Calidad | Apple | Banana | Guava | Lime | Orange | Pomegranate |
+|---|---:|---:|---:|---:|---:|---:|
+| Good | 267 | 201 | 200 | 200 | 206 | 1585 |
+| Regular | 890 | 936 | 813 | 743 | 510 | 720 |
+| Bad | 153 | 684 | 135 | 152 | 111 | 1009 |
+
+**Stats sobre las 18 combinaciones** (para estratificacion del split): IR=14.28, Hn=0.903, CV=0.79.
+
+Observacion clave: **Pomegranate** representa el 60% de las imagenes Good (1585/2659) y el 45% de las Bad (1009/2244). Esto motiva la estratificacion del split por las 18 combinaciones para que el modelo no aprenda 'es granada' como atajo para 'es Good'.
+
+## 4. Dimensiones de imagen
 
 | Estadistico | Width | Height |
 |---|---:|---:|
@@ -54,33 +53,34 @@ Aspect ratio mediano: **1.00** (p5-p95: 0.56 - 1.85).
 - Imagenes con lado < 100 px: **2562** (sospechosas: thumbnails o capturas corruptas).
 - Imagenes con lado > 3000 px: **2531** (camara de celular en alta resolucion).
 
-## 4. Hallazgos y decisiones para Fase 2 (preparacion)
+## 5. Hallazgos y decisiones para Fase 2 (preparacion)
 
-1. **Desbalanceo severo (IR=14.3, Hn=0.90)** -> usar `class_weight='balanced'` en SVM/RF y CNN; augmentation mas agresiva en clases minoritarias (Orange_Bad: 111, Guava_Bad: 135, Lime_Bad: 152, Apple_Bad: 153).
-2. **Resolucion heterogenea (13 px hasta 4032 px de lado)** -> resize fijo a 224x224 RGB normalizado a [0, 1]. Filtrar imagenes con lado < 64 px como outliers de calidad de captura.
-3. **HSV como feature explicito** -> el espacio HSV separa especies por Hue y permite captar perdida de Saturation en frutas magulladas. Incluir histograma HSV de 96 bins en el vector de features de ML tradicional.
-4. **Sesgo de clase (Pomegranate domina con 1585 en Good)** -> riesgo de que el modelo aprenda 'es granada' antes que 'es de calidad alta'. Reportar matriz de confusion 18x18 ademas de las marginales (3x3 calidad, 6x6 fruta).
-5. **Sesgo etico (PI1)** -> el dataset es recoleccion estudiantil; condiciones de captura no controladas (iluminacion, angulo, fondo). El manifest registra `source` para trazabilidad. No se procesan rostros ni metadatos personales (EXIF GPS).
-6. **Split estratificado por las 18 clases** (no solo por fruta o solo por calidad) con 70/15/15 train/val/test y `random_state=42` para reproducibilidad.
+1. **Desbalanceo leve (IR=2.06, Hn=0.954)** -> usar `class_weight='balanced'` por consistencia pero sin oversampling agresivo. La clase mayoritaria (Regular, 48.5%) duplica aproximadamente a la minoritaria (Bad, 23.6%).
+2. **Estratificacion por las 18 combinaciones Fruit_Quality** -> garantiza balance fruta x calidad en train/val/test. Usar `stratify=df['class']` y target=`df['quality']`.
+3. **Resolucion heterogenea (13 px hasta 4032 px de lado)** -> resize fijo a 224x224 RGB normalizado a [0, 1]. Filtrar imagenes con lado < 64 px como outliers de calidad de captura.
+4. **HSV como feature explicito** -> aunque el target es agnostico a la especie, Hue/Saturation aportan informacion sobre calidad (frutas magulladas pierden Saturation). Incluir histograma HSV de 96 bins en el vector de features de ML tradicional.
+5. **Analisis de sesgo obligatorio** -> evaluar matrices 3x3 (target) y 6x6 (por fruta). Reportar accuracy condicional por especie en el informe IEEE.
+6. **Etica (PI1)** -> dataset es recoleccion estudiantil; condiciones de captura no controladas. Manifest registra `source` para trazabilidad. No se procesan rostros ni metadatos personales (EXIF GPS).
 
-## 5. Figuras producidas
+## 6. Figuras producidas
 
 En `outputs/figures/eda/` (SVG vectorial para informe IEEE):
 
-- `01_distribucion_18_clases.svg` - bar chart horizontal con conteo por clase.
+- `01_distribucion_18_clases.svg` - bar chart de las 18 combinaciones (para analisis de sesgo).
 - `02_heatmap_fruta_calidad.svg` - tabla cruzada 6x3 en heatmap.
-- `03_porcentaje_vs_uniforme.svg` - proporcion de cada clase vs distribucion uniforme (1/18).
+- `03_porcentaje_vs_uniforme.svg` - desviacion de la distribucion uniforme.
 - `04_size_distributions.svg` - histogramas de width, height, aspect ratio.
 - `05_muestras_grid.svg` - grid 6x3 de muestras visuales por fruta x calidad.
-- `06_hsv_apple.svg`, `07_hsv_banana.svg` - histogramas HSV por calidad (se generan al ejecutar el notebook completo).
-- `08_hue_sat_scatter.svg` - posicion cromatica promedio por clase (idem).
+- `06_hsv_apple.svg`, `07_hsv_banana.svg` - histogramas HSV por calidad.
+- `08_hue_sat_scatter.svg` - posicion cromatica promedio por clase.
+- **`09_distribucion_3_clases.svg`** - distribucion del target (3 clases) + composicion por especie.
 
-## 6. Proximos pasos (Fase 3 - Preparacion)
+## 7. Proximos pasos (Fase 3 - Preparacion)
 
 - Limpieza: filtrar imagenes con lado < 64 px; verificacion de duplicados con hash perceptual.
 - Resize y normalizacion: 224x224 RGB en [0, 1] usando OpenCV.
-- Split estratificado por `class` (las 18 clases): 70% train / 15% val / 15% test.
-- Data augmentation con `albumentations`: HorizontalFlip, Rotate(+-25 deg), RandomBrightnessContrast. Mas iteraciones en clases minoritarias.
+- Split estratificado por `class` (18) con target=`quality` (3): 70% train / 15% val / 15% test.
+- Data augmentation con `albumentations`: HorizontalFlip, Rotate(+-25 deg), RandomBrightnessContrast.
 - Extraccion de features para ML tradicional (vector 141-D):
   - Histograma HSV: 96 bins (32 por canal).
   - LBP (Local Binary Patterns): 32 bins.
