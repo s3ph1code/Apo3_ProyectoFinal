@@ -1,5 +1,6 @@
 # ============================================================
-# Clasificación de Calidad de Manzanas – APO3 ICESI 2026-1
+# Clasificación de Calidad de Frutas – APO3 ICESI 2026-1
+# Multi-fruta (6 especies × 3 calidades = 18 clases)
 # ============================================================
 
 # Visión por computadora
@@ -26,6 +27,10 @@ seaborn>=0.12.0
 # Interfaz gráfica
 streamlit>=1.28.0
 
+# Descarga reproducible de Kaggle
+kagglehub>=0.2.0
+
 # Utilidades
 tqdm>=4.65.0
 joblib>=1.3.0
+pytest>=7.4.0
