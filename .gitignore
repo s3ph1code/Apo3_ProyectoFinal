@@ -24,8 +24,11 @@ dist/
 # ============================================================
 .ipynb_checkpoints/
 
+# Notebooks exportados (auxiliares, regenerables con scripts/export_notebooks.py)
+outputs/exports/
+
 # ============================================================
-# Datasets - NUNCA subir imagenes al repo (tamanio)
+# Datasets - NUNCA subir imagenes al repo (tamano)
 # ============================================================
 
 # Recoleccion compartida del curso (~9515 imgs, 3.3 GB)
@@ -45,8 +48,7 @@ data/processed/*
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 
-# El manifest CSV SI se versiona (es texto, reproducible, ~MB):
-# data/annotations/manifest.csv  <- NO ignorado, se sube
+# Carpeta de annotations: solo se versiona manifest.csv + README.md
 data/annotations/*
 !data/annotations/.gitkeep
 !data/annotations/manifest.csv
@@ -66,6 +68,9 @@ experiments/results/*.h5
 experiments/results/*.pt
 experiments/results/*.npy
 
+# JSON de umbrales de tamano (regenerable por la app Streamlit en primera ejecucion)
+experiments/size_thresholds.json
+
 # Compatibilidad con scaffold viejo (por si alguien crea models/)
 models/*.pkl
 models/*.h5
@@ -79,6 +84,20 @@ models/*.pt
 # outputs/figures/*.svg  <- NO ignorado, se sube
 outputs/*.tmp
 outputs/cache/
+
+# ============================================================
+# Imagenes auxiliares para informe / video (no versionar)
+# ============================================================
+imagenes_ComparativaModelos/
+imagenes_informe/
+imagenes_video/
+
+# Imagenes sueltas en la raiz (screenshots para informe/demo)
+/*.png
+/*.jpg
+/*.jpeg
+/*.webp
+/*.gif
 
 # ============================================================
 # Credenciales y secretos

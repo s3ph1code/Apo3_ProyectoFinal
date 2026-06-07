@@ -1,118 +1,143 @@
 """
 train.py
 --------
-Scripts de entrenamiento para todos los modelos del proyecto.
+CLI de entrenamiento para los modelos del proyecto. Wrapper conveniente
+de los notebooks 03/04 para correr en linea de comandos.
 
-Uso desde la raíz del repo:
+Uso
+---
     python src/training/train.py --model svm
     python src/training/train.py --model rf
-    python src/training/train.py --model cnn
+    python src/training/train.py --model cnn --epochs 20 --batch-size 32
+
+Los modelos entrenados se guardan en `experiments/checkpoints/`.
 """
+from __future__ import annotations
 
 import argparse
 import sys
 from pathlib import Path
 
-import numpy as np
-
-# Asegurar que src/ esté en el path
-sys.path.append(str(Path(__file__).parent.parent.parent))
-
-from src.data.preprocess import load_dataset, split_dataset
-from src.utils.features import extract_features
-from src.models.ml_models import train_svm, train_random_forest, save_model
-from src.models.cnn_model import build_cnn
-
-DATA_DIR = "data/raw"
-CHECKPOINTS_DIR = "experiments/checkpoints"
-LOGS_DIR = "experiments/logs"
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+sys.path.insert(0, str(REPO_ROOT))
 
 
-def train_ml_model(model_name: str):
-    """Entrena SVM o Random Forest sobre características manuales."""
-    print(f"\n{'='*50}")
-    print(f" Entrenando {model_name.upper()}")
-    print(f"{'='*50}\n")
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model", choices=["svm", "rf", "cnn"], required=True)
+    parser.add_argument("--epochs", type=int, default=20)
+    parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument("--no-grid-search", action="store_true",
+                        help="Skip GridSearchCV (use default hyperparams)")
+    args = parser.parse_args()
 
-    # 1. Cargar datos
-    X_img, y, class_names = load_dataset(DATA_DIR)
-    X_tr, X_va, X_te, y_tr, y_va, y_te = split_dataset(X_img, y)
+    out_dir = REPO_ROOT / "experiments" / "checkpoints"
+    out_dir.mkdir(parents=True, exist_ok=True)
 
-    # 2. Extraer características
-    print("[INFO] Extrayendo características...")
-    X_tr_feat = np.array([extract_features(img) for img in X_tr])
-    X_te_feat = np.array([extract_features(img) for img in X_te])
-
-    # 3. Entrenar
-    if model_name == "svm":
-        model = train_svm(X_tr_feat, y_tr)
-        save_path = f"{CHECKPOINTS_DIR}/svm_model.pkl"
+    if args.model in ("svm", "rf"):
+        _train_ml(args, out_dir)
     else:
-        model = train_random_forest(X_tr_feat, y_tr)
-        save_path = f"{CHECKPOINTS_DIR}/rf_model.pkl"
-
-    # 4. Guardar
-    save_model(model, save_path)
-
-    # 5. Evaluación rápida en test
-    from sklearn.metrics import f1_score
-    y_pred = model.predict(X_te_feat)
-    f1 = f1_score(y_te, y_pred, average="macro")
-    print(f"\n[RESULT] F1-macro en test: {f1:.4f}")
+        _train_cnn(args, out_dir)
 
 
-def train_cnn_model():
-    """Entrena la CNN sobre píxeles normalizados."""
-    try:
-        from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping, CSVLogger
-    except ImportError:
-        raise ImportError("Instala TensorFlow: pip install tensorflow")
+def _train_ml(args, out_dir):
+    """Entrena SVM o RF sobre el vector 141-D extraido del manifest."""
+    import numpy as np
+    import pandas as pd
+    from src.data.preprocess import load_and_preprocess_image
+    from src.utils.features import extract_features
+    from src.models.ml_models import SVMClassifier, RFClassifier
+    from tqdm import tqdm
 
-    print(f"\n{'='*50}")
-    print(f" Entrenando CNN")
-    print(f"{'='*50}\n")
+    print("[train] Cargando splits ...")
+    train_df = pd.read_csv(REPO_ROOT / "data" / "processed" / "train_manifest.csv")
+    val_df = pd.read_csv(REPO_ROOT / "data" / "processed" / "val_manifest.csv")
 
-    # 1. Cargar datos
-    X_img, y, class_names = load_dataset(DATA_DIR)
-    X_tr, X_va, X_te, y_tr, y_va, y_te = split_dataset(X_img, y)
+    cache = REPO_ROOT / "data" / "processed" / "features_train.npz"
+    if cache.exists():
+        print(f"[train] Usando cache de features: {cache}")
+        z = np.load(cache, allow_pickle=True)
+        X_train, y_train = z["X"], z["y"]
+    else:
+        print("[train] Extrayendo features 141-D para train (esto toma varios minutos)")
+        X_train = np.stack([
+            extract_features(load_and_preprocess_image(REPO_ROOT / p))
+            for p in tqdm(train_df["path"])
+        ])
+        y_train = train_df["quality"].values
+        np.savez(cache, X=X_train, y=y_train)
 
-    # 2. Construir modelo
-    model = build_cnn(num_classes=len(class_names))
+    if args.model == "svm":
+        model = SVMClassifier()
+        name = "svm_rbf"
+    else:
+        model = RFClassifier()
+        name = "random_forest"
 
-    # 3. Callbacks
-    Path(CHECKPOINTS_DIR).mkdir(parents=True, exist_ok=True)
-    Path(LOGS_DIR).mkdir(parents=True, exist_ok=True)
-    callbacks = [
-        ModelCheckpoint(f"{CHECKPOINTS_DIR}/cnn_best.h5",
-                        monitor="val_accuracy", save_best_only=True, verbose=1),
-        EarlyStopping(monitor="val_loss", patience=10, restore_best_weights=True),
-        CSVLogger(f"{LOGS_DIR}/cnn_training.csv"),
-    ]
+    print(f"[train] Entrenando {name} (GridSearchCV={'no' if args.no_grid_search else 'si'}) ...")
+    model.fit(X_train, y_train, do_grid_search=not args.no_grid_search)
+    print(f"[train] best_params: {model.best_params_}")
+    path = model.save(out_dir / f"{name}.joblib")
+    print(f"[train] Guardado: {path}")
 
-    # 4. Entrenar
-    history = model.fit(
-        X_tr, y_tr,
-        validation_data=(X_va, y_va),
-        epochs=50,
-        batch_size=32,
-        callbacks=callbacks,
-        verbose=1,
+
+def _train_cnn(args, out_dir):
+    """Entrena la CNN simple. Usa tf.data para streaming de imagenes."""
+    import numpy as np
+    import pandas as pd
+    import tensorflow as tf
+    from src.data.preprocess import (
+        load_and_preprocess_image, get_train_augmentation, get_val_augmentation,
+        CLASS_NAMES,
     )
+    from src.models.cnn_model import build_cnn, get_training_callbacks
 
-    # 5. Guardar curvas
-    from src.utils.helpers import save_learning_curves
-    save_learning_curves(history)
+    print("[train] Cargando splits ...")
+    train_df = pd.read_csv(REPO_ROOT / "data" / "processed" / "train_manifest.csv")
+    val_df = pd.read_csv(REPO_ROOT / "data" / "processed" / "val_manifest.csv")
 
-    return model, history
+    label2idx = {c: i for i, c in enumerate(CLASS_NAMES)}
+
+    def make_dataset(df, augment, shuffle):
+        train_aug = get_train_augmentation() if augment else None
+
+        def gen():
+            idx = np.arange(len(df))
+            if shuffle:
+                np.random.shuffle(idx)
+            for i in idx:
+                row = df.iloc[i]
+                img = load_and_preprocess_image(REPO_ROOT / row["path"])
+                if train_aug is not None:
+                    img = train_aug(image=img)["image"]
+                y = np.zeros(3, dtype=np.float32)
+                y[label2idx[row["quality"]]] = 1.0
+                yield img.astype(np.float32), y
+
+        sig = (tf.TensorSpec((224, 224, 3), tf.float32),
+               tf.TensorSpec((3,), tf.float32))
+        ds = tf.data.Dataset.from_generator(gen, output_signature=sig)
+        return ds.batch(args.batch_size).prefetch(tf.data.AUTOTUNE)
+
+    train_ds = make_dataset(train_df, augment=True, shuffle=True)
+    val_ds = make_dataset(val_df, augment=False, shuffle=False)
+
+    model = build_cnn()
+    model.summary()
+
+    cw = train_df["quality"].value_counts()
+    N = cw.sum(); K = 3
+    class_weight = {label2idx[c]: N / (K * cw[c]) for c in CLASS_NAMES}
+
+    cb = get_training_callbacks(str(out_dir / "cnn_best.h5"))
+    history = model.fit(
+        train_ds, validation_data=val_ds,
+        epochs=args.epochs, class_weight=class_weight, callbacks=cb, verbose=1,
+    )
+    final_path = out_dir / "cnn_final.h5"
+    model.save(final_path)
+    print(f"[train] Guardado: {final_path}")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Entrenar modelos de clasificación")
-    parser.add_argument("--model", choices=["svm", "rf", "cnn"], required=True,
-                        help="Modelo a entrenar: svm | rf | cnn")
-    args = parser.parse_args()
-
-    if args.model in ("svm", "rf"):
-        train_ml_model(args.model)
-    else:
-        train_cnn_model()
+    main()
