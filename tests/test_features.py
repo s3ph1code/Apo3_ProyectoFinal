@@ -1,3 +1,8 @@
+"""test_features.py
+
+Autor: Kevin Cifuentes Quintero (cifuentesclud@gmail.com)
+Universidad ICESI - Algoritmos y Programacion III, 2026-1.
+"""
 """Tests basicos para src/utils/features.py"""
 from __future__ import annotations
 

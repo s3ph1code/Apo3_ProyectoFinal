@@ -92,6 +92,10 @@ imagenes_ComparativaModelos/
 imagenes_informe/
 imagenes_video/
 
+# Guiones del video (notas personales, no entregable)
+informe/guion_video.md
+informe/guion_video_pantalla.md
+
 # Imagenes sueltas en la raiz (screenshots para informe/demo)
 /*.png
 /*.jpg

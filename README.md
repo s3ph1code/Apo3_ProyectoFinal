@@ -3,8 +3,6 @@
 
 Sistema de visión por computadora que clasifica la **calidad** de una fruta (alta / media / baja, equivalente a Good / Regular / Bad) a partir de una imagen individual, agnóstico a la especie. El dataset cubre seis frutas (manzana, banano, guayaba, lima, naranja, granada), pero el modelo aprende **pistas universales de calidad** transferibles entre especies. Se siguen modelos de ML tradicional y CNN bajo la metodología CRISP-DM.
 
-> **Estado actual:** Fase 1 (Comprensión de los datos) terminada. Próximo paso: Fase 2 (Preparación de los datos).
-
 ---
 
 ## Alcance
